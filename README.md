@@ -6,3 +6,9 @@
 
 - start using disk to store the data permananlty
 - optimize dbms and datastructure
+
+
+### implimentation details
+
+- spliting logic (left or right split)
+- parent split child choosing logic
