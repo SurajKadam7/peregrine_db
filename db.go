@@ -11,12 +11,13 @@ type tree struct {
 
 type node struct {
 	isLeaf     bool
-	cnt        int       // count of element present
-	maxElement uint16    // maximum element that each node can contain
-	elements   []element // total elements
+	cnt        int      // count of element present
+	maxElement uint16   // maximum element that each node can contain
+	elements   elements // total elements
 	parent     *node
 	child      []*node
 	next       *node // same level node for the leaf
+	degree     int
 }
 
 type element struct {
@@ -24,13 +25,13 @@ type element struct {
 	value float64
 }
 
-// 
 func New(maxElement uint16) *tree {
 	n := &node{
 		isLeaf:     true,
 		cnt:        0,
 		elements:   make([]element, 0),
 		next:       nil,
+		degree:     1,
 		maxElement: maxElement,
 	}
 	t := &tree{
@@ -204,12 +205,124 @@ func (t *tree) insertData(n *node, ind int, key int, value float64) {
 }
 
 func (t *tree) set(key int, value float64) {
-	// this function will alway leaf insert the data
-	// some findLeaf function will find the leafNode to insert the data
-	// if tree structure need to grow will use grow function which will grow the tree
-
 	leafNode, ind := findLeafNode(t, key)
 	t.insertData(leafNode, ind, key, value)
+}
+
+func removeElement(n *node, ind int) {
+	n.elements = append(n.elements[:ind], n.elements[ind+1:]...)
+	n.cnt -= 1
+}
+
+func hasSpace(child []*node, ind int, maxElement uint16) bool {
+	return child[ind].cnt <= int(maxElement)/2
+}
+
+func leftMerge(n *node, ind int) {
+	leftChild := n.child[ind-1]
+	rightChild := n.child[ind]
+
+	leftChild.elements = append(leftChild.elements, rightChild.elements...)
+	leftChild.cnt += rightChild.cnt
+
+	leftChild.child = append(leftChild.child, rightChild.child...)
+
+	index := leftChild.cnt - 1
+	n.elements[ind-1] = leftChild.elements[index]
+
+	// delete the node
+	if leftChild.isLeaf {
+		leftChild.next = rightChild.next
+	}
+
+	n.child = append(n.child[:ind], n.child[ind+1:]...)
+}
+
+func rightMerge(n *node, ind int) {
+	rightChild := n.child[ind+1]
+	leftChild := n.child[ind]
+
+	rightChild.elements = append(leftChild.elements, rightChild.elements...)
+	rightChild.cnt += leftChild.cnt
+
+	// coping the child elements
+	rightChild.child = append(leftChild.child, rightChild.child...)
+
+	if rightChild.isLeaf && ind-1 > 0 {
+		n.child[ind-1].next = leftChild.next
+	}
+
+	n.child = append(n.child[:ind], n.child[ind+1:]...)
+}
+
+func mergeIfPossible(n *node, ind int) {
+	if n == nil || n.isLeaf {
+		return
+	}
+
+	// check for the left merge
+	if ind-1 >= 0 && hasSpace(n.child, ind-1, n.maxElement) {
+		leftMerge(n, ind)
+		return
+	}
+
+	// checking for the right merge
+	if ind+1 < len(n.child) && hasSpace(n.child, ind+1, n.maxElement) {
+		rightMerge(n, ind)
+		return
+	}
+
+	// complete child node is deleted
+	if n.child[ind].cnt == 0 {
+		if ind-1 > 0 {
+			n.child[ind-1].next = n.child[ind].next
+		}
+		n.child = append(n.child[:ind], n.child[ind+1:]...)
+	}
+}
+
+func handleNilParent(t *tree, n *node) {
+	if n.cnt == 0 && len(n.child) == 1 {
+		t.root = n.child[0]
+		return
+	}
+
+	if n.cnt == 0 {
+		i := n.child[0].cnt - 1
+		n.elements = append(n.elements, n.child[0].elements[i])
+		n.cnt += 1
+	}
+}
+
+func (t *tree) deleteData(n *node, ind int, key int) {
+	curr := n
+	for {
+		removeElement(curr, ind)
+		mergeIfPossible(curr, ind)
+
+		if curr.parent == nil {
+			handleNilParent(t, curr)
+			return
+		}
+
+		curr = curr.parent
+
+		newInd := sort.Search(n.parent.cnt, func(i int) bool {
+			return curr.elements[i].key >= key
+		})
+
+		if newInd == curr.cnt || curr.elements[newInd].key != key {
+			mergeIfPossible(curr, ind)
+			return
+		}
+		ind = newInd
+	}
+
+}
+
+func (t *tree) delete(key int) {
+	leafNode, ind := findLeafNode(t, key)
+	t.deleteData(leafNode, ind, key)
 }
 
 func (t *tree) get(key int) float64 {
@@ -218,4 +331,270 @@ func (t *tree) get(key int) float64 {
 		return 0
 	}
 	return leaf.elements[ind].value
+}
+
+func (t *tree) getRange(key int, limit int) []element {
+	leaf, ind := findLeafNode(t, key)
+	if ind >= leaf.cnt || leaf.elements[ind].key != key {
+		return []element{}
+	}
+	elements := make([]element, limit)
+	for i := 0; i < limit; i++ {
+		elements = append(elements, leaf.elements[ind])
+		ind += 1
+		if ind == leaf.cnt {
+			leaf = leaf.next
+			ind = 0
+			if leaf == nil {
+				return elements
+			}
+		}
+	}
+	return elements
+}
+
+func removeChild(n *node, key int) {
+	if n.isLeaf {
+		return
+	}
+
+	ind := sort.Search(len(n.child), func(i int) bool {
+		return n.elements[i].key >= key
+	})
+
+	if ind == len(n.child) {
+		return
+	}
+
+	if n.child[ind].cnt == 0 {
+		removeElement(n, ind)
+	}
+}
+
+type elements []element
+
+func (e *elements) removeAt(ind int) {
+	copy((*e)[ind:], (*e)[ind+1:])
+	(*e) = (*e)[:len(*e)-1]
+}
+
+func removeAtG[t any](e []t, ind int) {
+	copy((e)[ind:], (e)[ind+1:])
+	(e) = (e)[:len(e)-1]
+}
+
+func leftStill(n *node, ind int, m int) {
+	// this many I can still
+	l := m
+	m = n.child[ind-1].cnt - m
+	e := make(elements, l+n.child[ind].cnt)
+	c := make([]*node, l+n.child[ind].cnt+1)
+
+	copy(e, n.child[ind-1].elements[m:])
+	copy(e[l:], n.child[ind].elements)
+	n.child[ind].elements = e
+
+	n.child[ind-1].elements = n.child[ind-1].elements[:m]
+
+	if n.child[ind].child != nil {
+		copy(c, n.child[ind-1].child[m:])
+		copy(c[l:], n.child[ind].child)
+		if c[len(c)-1] == nil{
+			c = c[:len(c)-1]
+		}
+		n.child[ind].child = c
+		n.child[ind-1].child = n.child[ind-1].child[:m]
+	}
+}
+
+func rightStill(n *node, ind int, m int) {
+	n.child[ind].elements = append(n.child[ind].elements, n.child[ind+1].elements[:m]...)
+	n.child[ind+1].elements = n.child[ind+1].elements[m:]
+
+	if n.child[ind].child != nil {
+		n.child[ind].child = append(n.child[ind].child, n.child[ind+1].child[:m]...)
+		n.child[ind+1].child = n.child[ind+1].child[m:]
+	}
+}
+
+func growChildAndRemove(n *node, i int) {
+
+	min := 1
+
+	switch {
+	case i > 0 && n.child[i-1].cnt > min:
+		still := n.child[i-1].cnt - min
+		leftStill(n, i, min)
+		n.child[i].cnt += still
+		n.child[i-1].cnt -= still
+		// changing the parent element with the current last element in the child
+		n.elements[i-1] = n.child[i-1].elements[n.child[i-1].cnt-1]
+
+	case i < len(n.child) && n.child[i+1].cnt > min:
+		still := n.child[i+1].cnt - min
+		rightStill(n, i, still)
+		n.child[i].cnt += still
+		n.child[i+1].cnt -= still
+
+		n.elements[i] = n.child[i].elements[n.child[i].cnt-1]
+
+	default:
+
+		if i < len(n.child) {
+			i -= 1
+		}
+		// copying all the values from
+		rightStill(n, i, n.child[i+1].cnt)
+		n.child[i+1].cnt = n.child[i].cnt
+		// distroying the node
+		n.child[i+1] = nil
+		removeAtG[*node](n.child, i+1)
+		copy(n.child[i:], n.child[i+1:])
+		n.child = n.child[:len(n.child)-1]
+		// deleting left element of current index
+		n.elements.removeAt(i - 1)
+	}
+
+}
+
+func remove(n *node, ind int, key int) {
+	for {
+		// finding the child node where my key was likely to be present
+		cInd := sort.Search(len(n.child), func(i int) bool {
+			return n.child[i].elements[0].key > key
+		})
+
+		present := n.elements[ind].key == key
+		if present {
+			n.elements.removeAt(ind)
+			n.cnt -= 1
+		}
+
+		if !n.isLeaf {
+			growChildAndRemove(n, cInd-1)
+		}
+		// recursion :
+		if n.parent == nil || !present {
+			return
+		}
+		n = n.parent
+		// finding the index where my key is prenset in the elements
+		ind = sort.Search(n.cnt, func(i int) bool {
+			return n.elements[i].key > key
+		})
+		ind -= 1
+	}
+}
+
+func (t *tree) deleteV2(key int) {
+	leaf, i := findLeafNode(t, key)
+	if i >= leaf.cnt || leaf.elements[i].key != key {
+		return
+	}
+
+	removeV2(leaf, i, key)
+	if t.root.cnt == 0 && len(t.root.child) == 1 {
+		t.root = t.root.child[0]
+	} else if t.root.cnt == 0 && len(t.root.child) > 1 {
+		panic("something is wrong with the tree")
+	}
+
+}
+
+func findChildNodeposition(parent *node, key int) int {
+	// need to find first node where my child was
+	// index is second last node of node whose index is higher that key
+	i := sort.Search(len(parent.child), func(i int) bool {
+		ind := parent.child[i].cnt
+		return parent.child[i].elements[ind-1].key > key
+	})
+	if i == 0 {
+		i++
+	}
+	return i - 1
+}
+
+func growChildAndRemoveV2(n *node, key int) {
+	min := 1
+	if n.parent == nil || n.cnt > min {
+		return
+	}
+	parent := n.parent
+	i := findChildNodeposition(parent, key)
+
+	switch {
+	case i > 0 && parent.child[i-1].cnt > min:
+		still := parent.child[i-1].cnt - min
+		leftStill(parent, i, min)
+		parent.child[i].cnt += still
+		parent.child[i-1].cnt -= still
+		// changing the parent element with the current last element in the child
+		parent.elements[i-1] = parent.child[i-1].elements[parent.child[i-1].cnt-1]
+
+	case i < len(parent.child) && parent.child[i+1].cnt > min:
+		still := parent.child[i+1].cnt - min
+		rightStill(parent, i, still)
+		parent.child[i].cnt += still
+		parent.child[i+1].cnt -= still
+
+		parent.elements[i] = parent.child[i].elements[parent.child[i].cnt-1]
+
+	default:
+		// include the merge logic
+		if i > len(parent.child) {
+			i -= 1
+		}
+		// copying all the values from current node to the right node and distroy self
+		leftStill(parent, i+1, parent.child[i].cnt)
+		parent.child[i+1].cnt += parent.child[i].cnt
+		// distroying the node
+		// removing
+		copy(parent.child[i:], parent.child[i+1:])
+		parent.child = parent.child[:len(parent.child)-1]
+
+		// deleting left element of current index
+		parent.elements.removeAt(i)
+		parent.cnt -= 1
+	}
+}
+
+// sort rule :
+// false go to right
+// true go to left
+
+// removeV2 will work will thing will go further up even if
+// non right child is removed just to rebalance the tree perfectly
+
+func removeV2(n *node, ind int, key int) {
+	for {
+		// delete the element
+		if n.elements[ind].key == key {
+			n.elements.removeAt(ind)
+			n.cnt -= 1
+		}
+		// saving the n.cnt due to it may change due to the growChild
+		currNodeElms := n.cnt
+		// grow treee
+		growChildAndRemoveV2(n, key)
+		if currNodeElms > ind {
+			// this will show that after deleting the element
+			// n.cnt count is > ind which mean that we have deleted non right element
+			// so need to go up
+			return
+		}
+		// below flow only work when we removed right most element from node
+		// need to go up
+		if n.parent == nil {
+			return
+		}
+		n = n.parent
+		// finding the index where my key is prenset in the elements
+		ind = sort.Search(n.cnt, func(i int) bool {
+			return n.elements[i].key > key
+		})
+		if ind == 0 {
+			ind += 1
+		}
+		ind -= 1
+	}
 }

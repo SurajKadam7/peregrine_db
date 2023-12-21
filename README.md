@@ -12,3 +12,7 @@
 
 - spliting logic (left or right split)
 - parent split child choosing logic
+
+
+- bugs :
+index node contains data
