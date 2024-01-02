@@ -2,45 +2,77 @@ package main
 
 import (
 	"fmt"
+	"math/rand"
+	"strconv"
+	"strings"
 	"testing"
 )
 
+var maxElement = 2
+
+func genRand(a []int) []int {
+	temp := make([]int, len(a))
+	copy(temp, a)
+	var randomArray []int
+	for i := 0; i < 5; i++ { // Change 5 to the desired length of the new array
+		randomIndex := rand.Intn(len(temp))
+		randomArray = append(randomArray, temp[randomIndex])
+		temp[randomIndex], temp[len(temp)-1] = temp[len(temp)-1], temp[randomIndex]
+		temp = temp[:len(temp)-1]
+	}
+	return randomArray
+}
+
+func resArr(val string) []int {
+	a := strings.Split(val, " ")
+	res := []int{}
+	for _, key := range a {
+		n, _ := strconv.Atoi(key)
+		res = append(res, n)
+	}
+	return res
+}
+
+func initTree(insertElm []int) *tree {
+	t := New(uint16(maxElement))
+	for _, key := range insertElm {
+		t.set(key, float64(key)/10)
+	}
+	display(t)
+	fmt.Printf("---------------tree---------------\n\n")
+	return t
+}
+func deleteElements(t *tree, deleteElm []int) {
+	for _, key := range deleteElm {
+		t.deleteV2(key)
+		display(t)
+		if t.root != nil {
+			fmt.Printf("------------------------------\n")
+		}
+	}
+}
+func Test_separate(t1 *testing.T) {
+	// [30 10 25 20 15] [20 10 25 30 15]
+	insert := "30 10 25 20 15"
+	delete := "20 10 25 30 15"
+	t := initTree(resArr(insert))
+	eld := resArr(delete)
+	deleteElements(t, eld)
+}
+
 func Test_tree_delete(t1 *testing.T) {
 	// 1st
-	var maxElement uint16 = 2
-	// t := New(maxElement)
-	// t.set(30, 0.3)
-	// t.set(20, 0.2)
-	// t.set(10, 0.1)
-	// t.set(8, 0.08)
-	// t.delete(10) // pass
+	tempValues := []int{10, 20, 15, 25, 30}
 
-	// // 2nd
-	// t = New(maxElement)
-	// t.set(30, 0.3)
-	// t.set(20, 0.2)
-	// t.set(10, 0.1)
-	// t.set(8, 0.08)
-	// t.set(7, 0.07)
-	// t.delete(10) // pass rightShif + parnetChange
+	for i := 0; i < 100; i++ {
+		insert := genRand(tempValues)
+		deleteElm := genRand(tempValues)
+		fmt.Println(insert, deleteElm)
 
-	t := New(maxElement)
-	t.set(30, 0.3)
-	t.set(20, 0.2)
-	t.set(10, 0.1)
-	t.set(5, 0.05)
-	t.set(3, 0.03)
-	t.set(7, 0.07) // to avoid merging with the deleting 3 operation
-	display(t)
-	fmt.Println("------------------------------")
-	t.deleteV2(3)
-	display(t)
-	fmt.Println("------------------------------")
-	t.deleteV2(7)
-	// t.deleteV2(10) // pass leftShif + parnetChange
-	fmt.Println("------------------------------")
-	// t.deleteV2(10)
-	display(t)
+		t := initTree(insert)
+		deleteElements(t, deleteElm)
+		fmt.Printf("------------   done  ------------------\n\n")
+	}
 }
 
 // 10
@@ -66,3 +98,15 @@ func Test_tree_delete(t1 *testing.T) {
 
 // 20
 // 5 20  | 30
+
+// 10
+// 5 10  | 20 only copy 7 as a value
+// 3 5  | 7 10  | 20  | 30
+// ------------------------------
+// 10
+// 7 10  | 20
+// 5 7  | 10  | 20  | 30
+// ------------------------------
+// ------------------------------
+// 10 20
+// 5 10  | 20  | 30

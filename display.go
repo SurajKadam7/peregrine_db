@@ -27,6 +27,9 @@ func getSpaces(n int) string {
 }
 
 func display(t *tree) {
+	if t.root == nil{
+		return 
+	}
 	n := t.root
 	stack := make([][]*node, 0)
 
