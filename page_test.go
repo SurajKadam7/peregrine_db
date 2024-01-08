@@ -10,16 +10,17 @@ import (
 func Test_insertGetCombined(t *testing.T) {
 	indM := IndexMeta{
 		// Size:   0,
-		MaxKey: []byte("index_10"),
-		MinKey: []byte("index_10"),
+		MaxKey: 10,
+		MinKey: 10,
 	}
 
 	indexs := []Index{}
 	for i := 30; i < 35; i++ {
-		indexs = append(indexs, Index{Key: []byte(fmt.Sprint("index_", i)), /*PageId: 123, Start: 1*/})
-		indM.MaxKey = []byte(fmt.Sprint("index_", i))
-		// indM.Size += 1s
+		indexs = append(indexs, Index{Key: int64(i)})
+		indM.MaxKey = int64(i)
+		indM.Size += 1
 	}
+
 	type args struct {
 		indM   IndexMeta
 		indexs []Index

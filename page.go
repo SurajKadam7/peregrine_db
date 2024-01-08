@@ -19,9 +19,9 @@ const (
 )
 
 type IndexMeta struct {
-	// Size   int64
-	MaxKey []byte
-	MinKey []byte
+	Size   int64
+	MaxKey int64
+	MinKey int64
 }
 
 type DataMeta struct {
@@ -35,7 +35,7 @@ type Page struct {
 }
 
 func (pg *Page) getDataMetaPage(start, end int) (value []byte) {
-	// TODo Read form file
+	pg.dataF.Seek(0, 0)
 	buff, err := io.ReadAll(pg.dataF)
 	if err != nil {
 		log.Fatal(err)
@@ -70,6 +70,7 @@ func (pg *Page) insertIntoDataMetaPage(value []byte) (start, end int64) {
 }
 
 func (pg *Page) getIndexPage() (indMeta IndexMeta, indexs []Index) {
+	pg.indexF.Seek(0, 0)
 	buff, err := io.ReadAll(pg.indexF)
 	if err != nil {
 		log.Fatal(err)
@@ -80,8 +81,8 @@ func (pg *Page) getIndexPage() (indMeta IndexMeta, indexs []Index) {
 	}
 
 	indM := (*IndexMeta)(unsafe.Pointer(&buff[0]))
-	// ptrToIndexMeta := unsafe.Pointer(&buff[IndexMetaSize])
-	// indexs = unsafe.Slice((*Index)(ptrToIndexMeta), indM.Size)
+	ptrToIndexMeta := unsafe.Pointer(&buff[IndexMetaSize])
+	indexs = unsafe.Slice((*Index)(ptrToIndexMeta), indM.Size)
 	return *indM, indexs
 }
 
@@ -94,7 +95,7 @@ func (pg *Page) insertIndex(indM IndexMeta, indexs []Index) {
 
 		buffIndM.MaxKey = indM.MaxKey
 		buffIndM.MinKey = indM.MinKey
-		// buffIndM.Size = indM.Size
+		buffIndM.Size = indM.Size
 	}
 
 	for i, index := range indexs {
@@ -102,12 +103,14 @@ func (pg *Page) insertIndex(indM IndexMeta, indexs []Index) {
 		buffIndex := (*Index)(unsafe.Pointer(&buff[ind]))
 
 		buffIndex.Key = index.Key
-		buffIndex.PageId = index.PageId
-		buffIndex.Start = index.Start
-		buffIndex.End = index.End
+		buffIndex.Data.PageId = index.Data.PageId
+		buffIndex.Data.Start = index.Data.Start
+		buffIndex.Data.End = index.Data.End
 	}
 
 	pg.indexF.Truncate(0)
+	pg.indexF.Seek(0, 0)
+
 	n, err := pg.indexF.Write(buff)
 	if err != nil {
 		log.Fatal(err)
@@ -127,4 +130,6 @@ func (pg *Page) insertIndex(indM IndexMeta, indexs []Index) {
 	if err != nil {
 		log.Fatal(err)
 	}
+	fileState, _ := pg.indexF.Stat()
+	log.Printf("byte size %v file size %v\n", sz, fileState.Size())
 }

@@ -1,25 +1,27 @@
 package peregrinedb
 
 import (
-	"bytes"
 	"errors"
 	"log"
+	"math"
 	"os"
 	"sort"
 )
 
 const (
 	MaxValueSize int = 1 << 9 // in bytes
+	MaxKeySize   int = 1 << 4
 )
 
 type Data struct {
-}
-
-type Index struct {
-	Key    []byte
 	PageId int64
 	Start  int64
 	End    int64
+}
+
+type Index struct {
+	Key  int64
+	Data Data
 }
 
 type DB struct {
@@ -50,43 +52,68 @@ func Open(name string) *DB {
 
 }
 
+func (db *DB) Close() {
+	if err := db.page.dataF.Close(); err != nil {
+		log.Fatal(err)
+	}
+	if err := db.page.indexF.Close(); err != nil {
+		log.Fatal(err)
+	}
+}
+
+// func (db *DB) init() {
+// 	meta := IndexMeta{
+// 		// Size:   0,
+// 		MinKey: make([]byte, 0),
+// 		MaxKey: make([]byte, 0),
+// 	}
+// 	db.page.insertIndex(meta, []Index{})
+// }
+
 func (db *DB) init() {
 	meta := IndexMeta{
-		// Size:   0,
-		MinKey: make([]byte, 0),
-		MaxKey: make([]byte, 0),
+		MinKey: math.MaxInt64,
+		MaxKey: math.MinInt64,
 	}
 	db.page.insertIndex(meta, []Index{})
 }
 
-func findIndex(key []byte, indexs []Index) int {
+// func findIndex(key []byte, indexs []Index) int {
+// 	ind := sort.Search(len(indexs), func(i int) bool {
+// 		// its like give me the smallest index where
+// 		// index[i].key is not small than key
+// 		return !(bytes.Compare(indexs[i].Key, key) == -1)
+// 	})
+// 	return ind
+// }
+
+func findIndex(key int64, indexs []Index) int {
 	ind := sort.Search(len(indexs), func(i int) bool {
-		// its like give me the smallest index where
-		// index[i].key is not small than key
-		return !(bytes.Compare(indexs[i].Key, key) == -1)
+		// its like give me the smallest index where index[i].key is not small than key
+		return !(indexs[i].Key < key)
 	})
 	return ind
 }
 
-func (db *DB) Get(key []byte) []byte {
+func (db *DB) Get(key int64) []byte {
 	// read index page
 	_, indexs := db.page.getIndexPage()
 	ind := findIndex(key, indexs)
 
 	// find the data page from index page
-	s, e := indexs[ind].Start, indexs[ind].End
+	s, e := indexs[ind].Data.Start, indexs[ind].Data.End
 	value := db.page.getDataMetaPage(int(s), int(e))
 	return value
 }
 
-func (db *DB) Put(key []byte, value []byte) error {
+func (db *DB) Put(key int64, value []byte) error {
 	if len(value) > int(MaxValueSize) {
 		return errors.New("value size is large")
 	}
 
 	indM, indexs := db.page.getIndexPage()
 	// updating the metadata
-	// indM.Size += 1
+	indM.Size += 1
 	indM.MaxKey = max(indM.MaxKey, key)
 	indM.MinKey = min(indM.MaxKey, key)
 
@@ -96,7 +123,7 @@ func (db *DB) Put(key []byte, value []byte) error {
 	s, e := db.page.insertIntoDataMetaPage(value)
 
 	// insert into index
-	if ind < len(indexs) && bytes.Equal(indexs[ind].Key, key) {
+	if ind < len(indexs) && indexs[ind].Key == key {
 		indexs = append(indexs[:ind+1], indexs[ind:]...)
 	}
 
@@ -105,10 +132,12 @@ func (db *DB) Put(key []byte, value []byte) error {
 	}
 
 	indexs[ind] = Index{
-		Key:    key,
-		PageId: 1,
-		Start:  s,
-		End:    e,
+		Key: key,
+		Data: Data{
+			PageId: 1,
+			Start:  s,
+			End:    e,
+		},
 	}
 
 	db.page.insertIndex(indM, indexs)
@@ -122,16 +151,16 @@ func (db *DB) Delete(key int64) error {
 
 // sorted slice as an index
 
-func max(a, b []byte) []byte {
-	if bytes.Compare(a, b) > 0 {
-		return a
-	}
-	return b
-}
+// func max(a, b []byte) []byte {
+// 	if bytes.Compare(a, b) > 0 {
+// 		return a
+// 	}
+// 	return b
+// }
 
-func min(a, b []byte) []byte {
-	if bytes.Compare(a, b) > 0 {
-		return b
-	}
-	return a
-}
+// func min(a, b []byte) []byte {
+// 	if bytes.Compare(a, b) > 0 {
+// 		return b
+// 	}
+// 	return a
+// }
